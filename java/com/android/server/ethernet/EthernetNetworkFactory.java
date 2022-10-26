@@ -342,6 +342,48 @@ class EthernetNetworkFactory {
                 return;
             }
             linkProperties = config.getStaticIpConfiguration().toLinkProperties(mIface);
+//Bug fix for static IP configuration
+	    StaticIpConfiguration staticConfig = config.getStaticIpConfiguration();
+            
+            mNetworkInfo.setDetailedState(DetailedState.OBTAINING_IPADDR, null, mHwAddr);
+            IpManager.Callback ipmCallback = new IpManager.Callback() {
+                @Override
+                public void onProvisioningSuccess(LinkProperties newLp) {
+                    mHandler.post(() -> onIpLayerStarted(newLp));
+                }
+
+                @Override
+                public void onProvisioningFailure(LinkProperties newLp) {
+                    mHandler.post(() -> onIpLayerStopped(newLp));
+                }
+
+                @Override
+                public void onLinkPropertiesChange(LinkProperties newLp) {
+                    mHandler.post(() -> updateLinkProperties(newLp));
+                }
+            };
+
+            stopIpManager();
+            mIpManager = new IpManager(mContext, mIface, ipmCallback);
+
+            if (config.getProxySettings() == ProxySettings.STATIC ||
+                    config.getProxySettings() == ProxySettings.PAC) {
+                mIpManager.setHttpProxy(config.getHttpProxy());
+            }
+
+            final String tcpBufferSizes = mContext.getResources().getString(
+                    com.android.internal.R.string.config_ethernet_tcp_buffers);
+            if (!TextUtils.isEmpty(tcpBufferSizes)) {
+                mIpManager.setTcpBufferSizes(tcpBufferSizes);
+            }
+
+            final ProvisioningConfiguration provisioningConfiguration =
+                    mIpManager.buildProvisioningConfiguration()
+                    		.withStaticConfiguration(staticConfig)
+                            .withProvisioningTimeoutMs(0)
+                            .build();
+            mIpManager.startProvisioning(provisioningConfiguration);
+//            
         } else {
             mNetworkInfo.setDetailedState(DetailedState.OBTAINING_IPADDR, null, mHwAddr);
             IpManager.Callback ipmCallback = new IpManager.Callback() {
